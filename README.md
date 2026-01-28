@@ -19,7 +19,6 @@ O worker consome mensagens do **RabbitMQ** e persiste o payload no **PostgreSQL*
 - kind
 - Python 3.8+ (somente para rodar scripts locais como publish)
 
-> Se o avaliador tiver apenas Docker/kind/kubectl, o caminho E2E abaixo cobre tudo.
 
 ---
 
