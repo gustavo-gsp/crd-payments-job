@@ -531,7 +531,7 @@ verify_data() {
         --image=postgres:15-alpine \
         -i \
         --env="PGPASSWORD=postgres" \
-        -- psql -h postgres -U postgres -d payments_db -t -c "SELECT COUNT(*) FROM payments;" 2>/dev/null | tr -d ' \n')
+        -- psql -h postgres -U postgres -d payments_db -t -c "SELECT COUNT(*) FROM payments;" 2>&1 | grep -E '^[[:space:]]*[0-9]+[[:space:]]*$' | tr -d ' \n')
     
     log_info "Records in payments table: $count"
     
