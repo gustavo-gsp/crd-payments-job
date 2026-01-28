@@ -1,0 +1,80 @@
+# Example PaymentJob resource
+# This creates a worker that consumes messages from RabbitMQ and persists to PostgreSQL
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rabbitmq-credentials
+  namespace: default
+type: Opaque
+stringData:
+  username: guest
+  password: guest
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-credentials
+  namespace: default
+type: Opaque
+stringData:
+  username: postgres
+  password: postgres
+---
+apiVersion: payments.example.com/v1alpha1
+kind: PaymentJob
+metadata:
+  name: payment-processor-01
+  namespace: default
+  labels:
+    app: payment-worker
+    environment: development
+spec:
+  # Queue to consume messages from
+  queueName: payments
+  
+  # Worker container image
+  image: payments-worker:latest
+  
+  # Optional: Process only N messages then exit (omit for continuous processing)
+  maxMessages: 100
+  
+  # RabbitMQ configuration
+  rabbitmq:
+    host: rabbitmq.default.svc.cluster.local
+    port: 5672
+    secretRef:
+      name: rabbitmq-credentials
+  
+  # PostgreSQL configuration
+  postgres:
+    host: postgres.default.svc.cluster.local
+    port: 5432
+    database: payments_db
+    secretRef:
+      name: postgres-credentials
+---
+# Another example: Continuous worker (no maxMessages limit)
+apiVersion: payments.example.com/v1alpha1
+kind: PaymentJob
+metadata:
+  name: payment-processor-continuous
+  namespace: default
+  labels:
+    app: payment-worker
+    environment: development
+spec:
+  queueName: high-priority-payments
+  image: payments-worker:latest
+  # No maxMessages = runs continuously
+  rabbitmq:
+    host: rabbitmq.default.svc.cluster.local
+    port: 5672
+    secretRef:
+      name: rabbitmq-credentials
+  postgres:
+    host: postgres.default.svc.cluster.local
+    port: 5432
+    database: payments_db
+    secretRef:
+      name: postgres-credentials

@@ -1,0 +1,171 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: paymentjobs.payments.example.com
+  annotations:
+    description: "PaymentJob CRD for managing RabbitMQ to PostgreSQL payment workers"
+spec:
+  group: payments.example.com
+  names:
+    kind: PaymentJob
+    listKind: PaymentJobList
+    plural: paymentjobs
+    singular: paymentjob
+    shortNames:
+      - pj
+      - pjob
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Phase
+          type: string
+          description: Current phase of the PaymentJob
+          jsonPath: .status.phase
+        - name: Job
+          type: string
+          description: Name of the underlying Kubernetes Job
+          jsonPath: .status.jobName
+        - name: Queue
+          type: string
+          description: RabbitMQ queue being consumed
+          jsonPath: .spec.queueName
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: PaymentJob is a custom resource that defines a worker job to consume messages from RabbitMQ and persist them to PostgreSQL.
+          required:
+            - spec
+          properties:
+            apiVersion:
+              type: string
+              description: 'APIVersion defines the versioned schema of this representation of an object.'
+            kind:
+              type: string
+              description: 'Kind is a string value representing the REST resource this object represents.'
+            metadata:
+              type: object
+            spec:
+              type: object
+              description: PaymentJobSpec defines the desired state of PaymentJob
+              required:
+                - queueName
+                - image
+                - rabbitmq
+                - postgres
+              properties:
+                queueName:
+                  type: string
+                  description: Name of the RabbitMQ queue to consume messages from
+                  minLength: 1
+                  maxLength: 255
+                  pattern: '^[a-zA-Z0-9._-]+$'
+                image:
+                  type: string
+                  description: Container image for the payment worker
+                  minLength: 1
+                maxMessages:
+                  type: integer
+                  description: Maximum number of messages to process before the job completes. If not set, the worker runs indefinitely.
+                  minimum: 1
+                  maximum: 1000000
+                rabbitmq:
+                  type: object
+                  description: RabbitMQ connection configuration
+                  required:
+                    - host
+                    - secretRef
+                  properties:
+                    host:
+                      type: string
+                      description: RabbitMQ server hostname or IP address
+                      minLength: 1
+                    port:
+                      type: integer
+                      description: RabbitMQ server port
+                      default: 5672
+                      minimum: 1
+                      maximum: 65535
+                    secretRef:
+                      type: object
+                      description: Reference to a Secret containing RabbitMQ credentials (keys 'username' and 'password')
+                      required:
+                        - name
+                      properties:
+                        name:
+                          type: string
+                          description: Name of the Secret in the same namespace
+                          minLength: 1
+                postgres:
+                  type: object
+                  description: PostgreSQL connection configuration
+                  required:
+                    - host
+                    - database
+                    - secretRef
+                  properties:
+                    host:
+                      type: string
+                      description: PostgreSQL server hostname or IP address
+                      minLength: 1
+                    port:
+                      type: integer
+                      description: PostgreSQL server port
+                      default: 5432
+                      minimum: 1
+                      maximum: 65535
+                    database:
+                      type: string
+                      description: PostgreSQL database name
+                      minLength: 1
+                      maxLength: 63
+                    secretRef:
+                      type: object
+                      description: Reference to a Secret containing PostgreSQL credentials (keys 'username' and 'password')
+                      required:
+                        - name
+                      properties:
+                        name:
+                          type: string
+                          description: Name of the Secret in the same namespace
+                          minLength: 1
+            status:
+              type: object
+              description: PaymentJobStatus defines the observed state of PaymentJob
+              properties:
+                phase:
+                  type: string
+                  description: Current phase of the PaymentJob
+                  enum:
+                    - Pending
+                    - Running
+                    - Succeeded
+                    - Failed
+                jobName:
+                  type: string
+                  description: Name of the Kubernetes Job created to run the worker
+                lastUpdateTime:
+                  type: string
+                  format: date-time
+                  description: Timestamp of the last status update
+                message:
+                  type: string
+                  description: Human-readable message indicating details about the current phase
+                messagesProcessed:
+                  type: integer
+                  description: Number of messages successfully processed (if available)
+                startTime:
+                  type: string
+                  format: date-time
+                  description: Time when the job started running
+                completionTime:
+                  type: string
+                  format: date-time
+                  description: Time when the job completed (succeeded or failed)
