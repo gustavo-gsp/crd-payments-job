@@ -331,35 +331,19 @@ deploy_operator() {
 publish_messages() {
     log_step "Publishing $MESSAGE_COUNT Test Messages to RabbitMQ"
     
-    # Create a one-shot pod to publish messages
-    kubectl apply -n "$NAMESPACE" -f - <<EOF
-apiVersion: v1
-kind: Pod
-metadata:
-  name: message-publisher
-  labels:
-    app: message-publisher
-spec:
-  restartPolicy: Never
-  containers:
-  - name: publisher
-    image: python:3.11-slim
-    command:
-    - /bin/bash
-    - -c
-    - |
-      pip install pika --quiet
-      python3 << 'PYTHON_SCRIPT'
+    # Create Python script as a ConfigMap
+    kubectl create configmap publisher-script -n "$NAMESPACE" --from-literal=publish.py="
 import json
 import uuid
+import os
 import pika
 from datetime import datetime
 
-RABBITMQ_HOST = "rabbitmq"
-QUEUE_NAME = "payments"
-MESSAGE_COUNT = $MESSAGE_COUNT
+RABBITMQ_HOST = os.environ.get('RABBITMQ_HOST', 'rabbitmq')
+QUEUE_NAME = os.environ.get('QUEUE_NAME', 'payments')
+MESSAGE_COUNT = int(os.environ.get('MESSAGE_COUNT', '10'))
 
-print(f"Connecting to RabbitMQ at {RABBITMQ_HOST}...")
+print(f'Connecting to RabbitMQ at {RABBITMQ_HOST}...')
 credentials = pika.PlainCredentials('guest', 'guest')
 connection = pika.BlockingConnection(
     pika.ConnectionParameters(host=RABBITMQ_HOST, credentials=credentials)
@@ -367,7 +351,7 @@ connection = pika.BlockingConnection(
 channel = connection.channel()
 channel.queue_declare(queue=QUEUE_NAME, durable=True)
 
-print(f"Publishing {MESSAGE_COUNT} messages...")
+print(f'Publishing {MESSAGE_COUNT} messages...')
 for i in range(1, MESSAGE_COUNT + 1):
     payload = {
         'transaction_id': str(uuid.uuid4()),
@@ -385,11 +369,44 @@ for i in range(1, MESSAGE_COUNT + 1):
             message_id=str(uuid.uuid4())
         )
     )
-    print(f"  [{i}/{MESSAGE_COUNT}] Published order_id={payload['order_id']}")
+    print(f'  [{i}/{MESSAGE_COUNT}] Published order_id={payload[\"order_id\"]}')
 
 connection.close()
-print(f"Done! Published {MESSAGE_COUNT} messages.")
-PYTHON_SCRIPT
+print(f'Done! Published {MESSAGE_COUNT} messages.')
+" --dry-run=client -o yaml | kubectl apply -f -
+
+    # Create a one-shot pod to publish messages
+    kubectl apply -n "$NAMESPACE" -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: message-publisher
+  labels:
+    app: message-publisher
+spec:
+  restartPolicy: Never
+  containers:
+  - name: publisher
+    image: python:3.11-slim
+    command: ["/bin/bash", "-c"]
+    args:
+    - |
+      pip install pika --quiet
+      python3 /scripts/publish.py
+    env:
+    - name: RABBITMQ_HOST
+      value: "rabbitmq"
+    - name: QUEUE_NAME
+      value: "payments"
+    - name: MESSAGE_COUNT
+      value: "$MESSAGE_COUNT"
+    volumeMounts:
+    - name: script
+      mountPath: /scripts
+  volumes:
+  - name: script
+    configMap:
+      name: publisher-script
 EOF
 
     # Wait for publisher pod to complete
@@ -416,8 +433,9 @@ EOF
     log_info "Publisher output:"
     kubectl logs -n "$NAMESPACE" message-publisher
     
-    # Cleanup publisher pod
+    # Cleanup publisher pod and configmap
     kubectl delete pod -n "$NAMESPACE" message-publisher --ignore-not-found
+    kubectl delete configmap -n "$NAMESPACE" publisher-script --ignore-not-found
     
     log_success "Messages published"
 }
